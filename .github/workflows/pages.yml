@@ -1,0 +1,62 @@
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/web
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend/web
+        env:
+          VITE_API_BASE_URL: ${{ vars.LIVE_API_BASE_URL }}
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          if [[ "$VITE_API_BASE_URL" != https://* || "$VITE_API_BASE_URL" == */ ]]; then
+            echo "::error::Set LIVE_API_BASE_URL to the public HTTPS API origin, with no trailing slash."
+            exit 1
+          fi
+          npm run build -- --base "${PAGES_BASE_PATH%/}/"
+
+      - name: Upload frontend
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: frontend/web/dist
+
+      - name: Deploy frontend
+        id: deployment
+        uses: actions/deploy-pages@v4
